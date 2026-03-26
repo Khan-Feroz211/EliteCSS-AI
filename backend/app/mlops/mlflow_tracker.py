@@ -9,7 +9,9 @@ from typing import Any
 
 from app.config import settings
 
-_tracking_context: contextvars.ContextVar[dict[str, str]] = contextvars.ContextVar("tracking_context", default={})
+_tracking_context: contextvars.ContextVar[dict[str, str]] = contextvars.ContextVar(
+    "tracking_context", default={}
+)
 _run_registry_lock = threading.Lock()
 _run_registry: dict[str, str] = {}
 
@@ -45,13 +47,21 @@ def _safe_mlflow_setup() -> None:
     mlflow.set_experiment(settings.mlflow_experiment_name)
 
 
-def track_llm_call(model_name: str) -> Callable[[Callable[..., tuple[str, int]]], Callable[..., tuple[str, int]]]:
-    def decorator(func: Callable[..., tuple[str, int]]) -> Callable[..., tuple[str, int]]:
+def track_llm_call(
+    model_name: str,
+) -> Callable[[Callable[..., tuple[str, int]]], Callable[..., tuple[str, int]]]:
+    def decorator(
+        func: Callable[..., tuple[str, int]]
+    ) -> Callable[..., tuple[str, int]]:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> tuple[str, int]:
             context = get_tracking_context()
             messages = args[0] if args else kwargs.get("messages", [])
-            prompt_length = sum(len(m.get("content", "")) for m in messages) if isinstance(messages, list) else 0
+            prompt_length = (
+                sum(len(m.get("content", "")) for m in messages)
+                if isinstance(messages, list)
+                else 0
+            )
 
             started = time.perf_counter()
             reply, tokens_used = func(*args, **kwargs)
@@ -78,7 +88,13 @@ def track_llm_call(model_name: str) -> Callable[[Callable[..., tuple[str, int]]]
                         }
                     )
 
-                    for key in ["user_id", "session_id", "exam_topic", "prompt_version", "message_id"]:
+                    for key in [
+                        "user_id",
+                        "session_id",
+                        "exam_topic",
+                        "prompt_version",
+                        "message_id",
+                    ]:
                         value = context.get(key)
                         if value:
                             mlflow.set_tag(key, value)

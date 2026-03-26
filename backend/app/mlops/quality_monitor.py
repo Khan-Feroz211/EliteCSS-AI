@@ -42,7 +42,9 @@ def record_latency(latency_ms: float) -> dict[str, float]:
     }
 
 
-def analyze_response(response_text: str, latency_ms: float) -> dict[str, float | dict[str, float]]:
+def analyze_response(
+    response_text: str, latency_ms: float
+) -> dict[str, float | dict[str, float]]:
     latency = record_latency(latency_ms)["model_latency_p50_p95_p99"]
     return {
         "response_relevance_score": response_relevance_score(response_text),

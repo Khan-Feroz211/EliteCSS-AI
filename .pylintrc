@@ -1,0 +1,39 @@
+[MASTER]
+ignore=__pycache__
+
+[MESSAGES CONTROL]
+disable=
+    C0114,
+    C0115,
+    C0116,
+    C0301,
+    C0411,
+    C0415,
+    W0212,
+    W0611,
+    W0613,
+    W0621,
+    W0718,
+    R0401,
+    R0903,
+    R0914
+
+[TYPECHECK]
+ignored-modules=
+    fastapi,
+    slowapi,
+    pydantic,
+    pydantic_settings,
+    sqlalchemy,
+    sqlalchemy.ext.asyncio,
+    sqlalchemy.orm,
+    structlog,
+    starlette,
+    mlflow,
+    anthropic,
+    google.generativeai,
+    openai,
+    yaml
+
+[FORMAT]
+max-line-length=100

@@ -33,7 +33,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         user_id = request.headers.get("x-user-id", "anonymous")
         model = "unknown"
 
-        if request.method == "POST" and "application/json" in request.headers.get("content-type", ""):
+        if request.method == "POST" and "application/json" in request.headers.get(
+            "content-type", ""
+        ):
             body = await request.body()
             if body:
                 try:

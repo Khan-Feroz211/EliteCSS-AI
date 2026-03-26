@@ -24,13 +24,16 @@ jobs:
           python-version: "3.11"
 
       - name: Backend lint deps
-        run: pip install ruff==0.8.4 black==24.10.0
+        run: pip install -r backend/requirements.txt ruff==0.8.4 black==24.10.0 pylint==4.0.5
 
       - name: Ruff check backend
         run: ruff check backend
 
       - name: Black check backend
         run: black --check backend
+
+      - name: Pylint backend
+        run: pylint --rcfile=.pylintrc backend/app
 
       - name: Setup Node
         uses: actions/setup-node@v4

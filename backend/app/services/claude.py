@@ -10,14 +10,18 @@ def _client() -> Anthropic:
     return Anthropic(api_key=settings.claude_api_key)
 
 
-def _split_messages(messages: list[dict[str, str]], system_prompt: str) -> tuple[str, list[dict[str, str]]]:
+def _split_messages(
+    messages: list[dict[str, str]], system_prompt: str
+) -> tuple[str, list[dict[str, str]]]:
     active_system_prompt = system_prompt
     prepared: list[dict[str, str]] = []
 
     for item in messages:
         role = item.get("role", "user")
         if role == "system":
-            active_system_prompt = f"{active_system_prompt}\n{item.get('content', '')}".strip()
+            active_system_prompt = (
+                f"{active_system_prompt}\n{item.get('content', '')}".strip()
+            )
             continue
         if role == "assistant":
             prepared.append({"role": "assistant", "content": item.get("content", "")})
@@ -28,7 +32,9 @@ def _split_messages(messages: list[dict[str, str]], system_prompt: str) -> tuple
 
 
 @track_llm_call(model_name="claude-3-sonnet-20240229")
-def call_claude(messages: list[dict[str, str]], system_prompt: str | None = None) -> tuple[str, int]:
+def call_claude(
+    messages: list[dict[str, str]], system_prompt: str | None = None
+) -> tuple[str, int]:
     prompt = system_prompt or settings.system_prompt
     active_system_prompt, prepared_messages = _split_messages(messages, prompt)
     response = _client().messages.create(
@@ -46,7 +52,9 @@ def call_claude(messages: list[dict[str, str]], system_prompt: str | None = None
     return reply, tokens
 
 
-def stream_claude(messages: list[dict[str, str]], system_prompt: str | None = None) -> Iterator[str]:
+def stream_claude(
+    messages: list[dict[str, str]], system_prompt: str | None = None
+) -> Iterator[str]:
     prompt = system_prompt or settings.system_prompt
     active_system_prompt, prepared_messages = _split_messages(messages, prompt)
 

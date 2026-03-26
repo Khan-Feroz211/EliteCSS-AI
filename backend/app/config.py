@@ -16,6 +16,10 @@ class Settings(BaseSettings):
 
     temperature: float = 0.3
     max_tokens: int = 1024
+    max_history_messages: int = 8
+    enable_response_cache: bool = True
+    response_cache_ttl_seconds: int = 120
+    response_cache_max_entries: int = 256
 
     system_prompt: str = (
         "You are a CSS exam preparation assistant for Pakistan's CSS competitive exam. "

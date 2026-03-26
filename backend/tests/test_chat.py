@@ -21,7 +21,9 @@ def _payload(model: str, content: str = "Tell me about Pakistan Affairs") -> dic
 def test_chat_gpt_route(monkeypatch):
     from app.routers import chat
 
-    monkeypatch.setattr(chat, "call_gpt", lambda messages, system_prompt=None: ("gpt ok", 11))
+    monkeypatch.setattr(
+        chat, "call_gpt", lambda messages, system_prompt=None: ("gpt ok", 11)
+    )
 
     res = client.post("/api/v1/chat", json=_payload("gpt"), headers={"x-user-id": "u1"})
     assert res.status_code == 200
@@ -34,9 +36,13 @@ def test_chat_gpt_route(monkeypatch):
 def test_chat_claude_route(monkeypatch):
     from app.routers import chat
 
-    monkeypatch.setattr(chat, "call_claude", lambda messages, system_prompt=None: ("claude ok", 12))
+    monkeypatch.setattr(
+        chat, "call_claude", lambda messages, system_prompt=None: ("claude ok", 12)
+    )
 
-    res = client.post("/api/v1/chat", json=_payload("claude"), headers={"x-user-id": "u1"})
+    res = client.post(
+        "/api/v1/chat", json=_payload("claude"), headers={"x-user-id": "u1"}
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["reply"] == "claude ok"
@@ -47,9 +53,13 @@ def test_chat_claude_route(monkeypatch):
 def test_chat_gemini_route(monkeypatch):
     from app.routers import chat
 
-    monkeypatch.setattr(chat, "call_gemini", lambda messages, system_prompt=None: ("gemini ok", 13))
+    monkeypatch.setattr(
+        chat, "call_gemini", lambda messages, system_prompt=None: ("gemini ok", 13)
+    )
 
-    res = client.post("/api/v1/chat", json=_payload("gemini"), headers={"x-user-id": "u1"})
+    res = client.post(
+        "/api/v1/chat", json=_payload("gemini"), headers={"x-user-id": "u1"}
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["reply"] == "gemini ok"
@@ -59,7 +69,9 @@ def test_chat_gemini_route(monkeypatch):
 
 def test_validation_message_too_long():
     too_long = "x" * 2001
-    res = client.post("/api/v1/chat", json=_payload("gpt", too_long), headers={"x-user-id": "u1"})
+    res = client.post(
+        "/api/v1/chat", json=_payload("gpt", too_long), headers={"x-user-id": "u1"}
+    )
     assert res.status_code == 422
 
 
@@ -75,9 +87,15 @@ def test_feedback_store(monkeypatch):
     from app.routers import chat
 
     asyncio.run(init_db())
-    monkeypatch.setattr(chat, "call_gpt", lambda messages, system_prompt=None: ("gpt ok", 11))
+    monkeypatch.setattr(
+        chat, "call_gpt", lambda messages, system_prompt=None: ("gpt ok", 11)
+    )
 
-    chat_res = client.post("/api/v1/chat", json=_payload("gpt"), headers={"x-user-id": "u1", "x-session-id": "s1"})
+    chat_res = client.post(
+        "/api/v1/chat",
+        json=_payload("gpt"),
+        headers={"x-user-id": "u1", "x-session-id": "s1"},
+    )
     assert chat_res.status_code == 200
     message_id = chat_res.headers.get("x-message-id")
     assert message_id

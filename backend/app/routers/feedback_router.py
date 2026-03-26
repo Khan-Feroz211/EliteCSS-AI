@@ -45,7 +45,11 @@ async def submit_feedback(
                 if payload.comment:
                     mlflow.set_tag("feedback_comment", payload.comment)
         except Exception as exc:
-            logger.warning("feedback_mlflow_link_failed", message_id=payload.message_id, error=str(exc))
+            logger.warning(
+                "feedback_mlflow_link_failed",
+                message_id=payload.message_id,
+                error=str(exc),
+            )
 
     logger.info(
         "feedback_recorded",
@@ -55,4 +59,6 @@ async def submit_feedback(
         rating=payload.rating,
     )
 
-    return FeedbackResponse(status="stored", feedback_id=entity.id, linked_to_run=bool(run_id))
+    return FeedbackResponse(
+        status="stored", feedback_id=entity.id, linked_to_run=bool(run_id)
+    )

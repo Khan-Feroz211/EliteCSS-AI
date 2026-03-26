@@ -8,7 +8,9 @@ def _model(system_prompt: str):
     import google.generativeai as genai
 
     genai.configure(api_key=settings.gemini_api_key)
-    return genai.GenerativeModel(model_name=settings.gemini_model, system_instruction=system_prompt)
+    return genai.GenerativeModel(
+        model_name=settings.gemini_model, system_instruction=system_prompt
+    )
 
 
 def _to_gemini_parts(messages: list[dict[str, str]]) -> list[dict[str, object]]:
@@ -24,7 +26,9 @@ def _to_gemini_parts(messages: list[dict[str, str]]) -> list[dict[str, object]]:
 
 
 @track_llm_call(model_name="gemini-pro")
-def call_gemini(messages: list[dict[str, str]], system_prompt: str | None = None) -> tuple[str, int]:
+def call_gemini(
+    messages: list[dict[str, str]], system_prompt: str | None = None
+) -> tuple[str, int]:
     prompt = system_prompt or settings.system_prompt
     response = _model(prompt).generate_content(
         _to_gemini_parts(messages),
@@ -40,7 +44,9 @@ def call_gemini(messages: list[dict[str, str]], system_prompt: str | None = None
     return reply, int(tokens or 0)
 
 
-def stream_gemini(messages: list[dict[str, str]], system_prompt: str | None = None) -> Iterator[str]:
+def stream_gemini(
+    messages: list[dict[str, str]], system_prompt: str | None = None
+) -> Iterator[str]:
     prompt = system_prompt or settings.system_prompt
     stream = _model(prompt).generate_content(
         _to_gemini_parts(messages),

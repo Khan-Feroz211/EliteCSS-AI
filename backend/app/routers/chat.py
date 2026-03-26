@@ -1,6 +1,8 @@
 import json
+import hashlib
 import time
 import uuid
+from collections import OrderedDict
 from collections.abc import Iterator
 
 import structlog
@@ -9,7 +11,11 @@ from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.mlops.mlflow_tracker import clear_tracking_context, set_tracking_context
-from app.mlops.prompt_manager import detect_exam_topic, load_prompt, select_prompt_version
+from app.mlops.prompt_manager import (
+    detect_exam_topic,
+    load_prompt,
+    select_prompt_version,
+)
 from app.mlops.quality_monitor import analyze_response
 from app.models.schemas import ChatRequest, ChatResponse
 from app.services.claude import call_claude, stream_claude
@@ -18,6 +24,7 @@ from app.services.gpt import call_gpt, stream_gpt
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = structlog.get_logger("chat")
+_RESPONSE_CACHE: OrderedDict[str, tuple[float, str, int]] = OrderedDict()
 
 
 def get_user_id(x_user_id: str | None = Header(default=None)) -> str:
@@ -38,7 +45,9 @@ def _resolve_model_name(model: str) -> str:
     raise HTTPException(status_code=400, detail="Invalid model selected")
 
 
-def _chat_call(model: str, messages: list[dict[str, str]], system_prompt: str) -> tuple[str, int]:
+def _chat_call(
+    model: str, messages: list[dict[str, str]], system_prompt: str
+) -> tuple[str, int]:
     if model == "gpt":
         return call_gpt(messages, system_prompt=system_prompt)
     if model == "claude":
@@ -48,7 +57,9 @@ def _chat_call(model: str, messages: list[dict[str, str]], system_prompt: str) -
     raise HTTPException(status_code=400, detail="Invalid model selected")
 
 
-def _stream_call(model: str, messages: list[dict[str, str]], system_prompt: str) -> Iterator[str]:
+def _stream_call(
+    model: str, messages: list[dict[str, str]], system_prompt: str
+) -> Iterator[str]:
     if model == "gpt":
         return stream_gpt(messages, system_prompt=system_prompt)
     if model == "claude":
@@ -56,6 +67,55 @@ def _stream_call(model: str, messages: list[dict[str, str]], system_prompt: str)
     if model == "gemini":
         return stream_gemini(messages, system_prompt=system_prompt)
     raise HTTPException(status_code=400, detail="Invalid model selected")
+
+
+def _optimize_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    max_history = max(int(settings.max_history_messages), 1)
+    if len(messages) <= max_history:
+        return messages
+    return messages[-max_history:]
+
+
+def _cache_key(model: str, messages: list[dict[str, str]], prompt_version: str) -> str:
+    payload = json.dumps(
+        {"model": model, "prompt_version": prompt_version, "messages": messages},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _cache_get(cache_key: str) -> tuple[str, int] | None:
+    if not settings.enable_response_cache:
+        return None
+
+    entry = _RESPONSE_CACHE.get(cache_key)
+    if entry is None:
+        return None
+
+    expires_at, reply, tokens_used = entry
+    if expires_at <= time.time():
+        _RESPONSE_CACHE.pop(cache_key, None)
+        return None
+
+    _RESPONSE_CACHE.move_to_end(cache_key)
+    return reply, tokens_used
+
+
+def _cache_set(cache_key: str, reply: str, tokens_used: int) -> None:
+    if not settings.enable_response_cache:
+        return
+
+    ttl_seconds = max(int(settings.response_cache_ttl_seconds), 0)
+    max_entries = max(int(settings.response_cache_max_entries), 1)
+    if ttl_seconds == 0:
+        return
+
+    _RESPONSE_CACHE[cache_key] = (time.time() + ttl_seconds, reply, tokens_used)
+    _RESPONSE_CACHE.move_to_end(cache_key)
+
+    while len(_RESPONSE_CACHE) > max_entries:
+        _RESPONSE_CACHE.popitem(last=False)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -69,13 +129,37 @@ def chat(
 ) -> ChatResponse:
     del request
 
-    messages = [m.model_dump() for m in payload.messages]
+    started = time.perf_counter()
+    messages = _optimize_messages([m.model_dump() for m in payload.messages])
     model_name = _resolve_model_name(payload.model)
     prompt_version = select_prompt_version()
     system_prompt = load_prompt(prompt_version)
     exam_topic = detect_exam_topic(messages)
     message_id = uuid.uuid4().hex
     response.headers["x-message-id"] = message_id
+    cache_key = _cache_key(payload.model, messages, prompt_version)
+
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        cached_reply, _ = cached
+        latency_ms = (time.perf_counter() - started) * 1000
+        response.headers["x-cache"] = "hit"
+        logger.info(
+            "chat_cache_hit",
+            model=model_name,
+            user_id=user_id,
+            session_id=session_id,
+            message_id=message_id,
+            prompt_version=prompt_version,
+            exam_topic=exam_topic,
+            latency_ms=latency_ms,
+        )
+        return ChatResponse(
+            reply=cached_reply,
+            model=model_name,
+            tokens_used=0,
+            latency_ms=round(latency_ms, 2),
+        )
 
     set_tracking_context(
         user_id=user_id,
@@ -84,11 +168,12 @@ def chat(
         prompt_version=prompt_version,
         message_id=message_id,
     )
-
-    started = time.perf_counter()
+    response.headers["x-cache"] = "miss"
 
     try:
-        reply, tokens_used = _chat_call(payload.model, messages, system_prompt=system_prompt)
+        reply, tokens_used = _chat_call(
+            payload.model, messages, system_prompt=system_prompt
+        )
     except Exception as exc:
         logger.exception(
             "chat_failed",
@@ -100,7 +185,9 @@ def chat(
             session_id=session_id,
         )
         clear_tracking_context()
-        raise HTTPException(status_code=502, detail="Model provider call failed") from exc
+        raise HTTPException(
+            status_code=502, detail="Model provider call failed"
+        ) from exc
 
     latency_ms = (time.perf_counter() - started) * 1000
     quality_metrics = analyze_response(reply, latency_ms)
@@ -119,6 +206,7 @@ def chat(
         response_length_chars=quality_metrics["response_length_chars"],
         model_latency_p50_p95_p99=quality_metrics["model_latency_p50_p95_p99"],
     )
+    _cache_set(cache_key, reply, tokens_used)
 
     clear_tracking_context()
 
@@ -140,7 +228,7 @@ def chat_stream(
 ) -> StreamingResponse:
     del request
 
-    messages = [m.model_dump() for m in payload.messages]
+    messages = _optimize_messages([m.model_dump() for m in payload.messages])
     model_name = _resolve_model_name(payload.model)
     prompt_version = select_prompt_version()
     system_prompt = load_prompt(prompt_version)
@@ -160,10 +248,18 @@ def chat_stream(
     def event_generator() -> Iterator[str]:
         token_count = 0
         try:
-            meta = json.dumps({"message_id": message_id, "prompt_version": prompt_version, "model": model_name})
+            meta = json.dumps(
+                {
+                    "message_id": message_id,
+                    "prompt_version": prompt_version,
+                    "model": model_name,
+                }
+            )
             yield f"event: meta\ndata: {meta}\n\n"
 
-            for token in _stream_call(payload.model, messages, system_prompt=system_prompt):
+            for token in _stream_call(
+                payload.model, messages, system_prompt=system_prompt
+            ):
                 token_count += 1
                 chunk = json.dumps({"token": token, "model": model_name})
                 yield f"event: token\ndata: {chunk}\n\n"
@@ -219,5 +315,9 @@ def chat_stream_eventsource(
     user_id: str = Query("anonymous"),
     session_id: str = Query("default"),
 ) -> StreamingResponse:
-    payload = ChatRequest.model_validate({"messages": json.loads(messages), "model": model})
-    return chat_stream(request=request, payload=payload, user_id=user_id, session_id=session_id)
+    payload = ChatRequest.model_validate(
+        {"messages": json.loads(messages), "model": model}
+    )
+    return chat_stream(
+        request=request, payload=payload, user_id=user_id, session_id=session_id
+    )

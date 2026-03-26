@@ -15,4 +15,6 @@ class Feedback(Base):
     comment: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[str] = mapped_column(String(128), default="anonymous")
     session_id: Mapped[str] = mapped_column(String(128), default="default")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

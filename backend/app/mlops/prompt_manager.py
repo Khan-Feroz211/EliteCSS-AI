@@ -27,7 +27,12 @@ def select_prompt_version() -> str:
 def detect_exam_topic(messages: list[dict[str, str]]) -> str:
     text = " ".join(m.get("content", "") for m in messages).lower()
     topic_map = {
-        "pakistan affairs": ["pakistan", "governance", "constitution", "foreign policy"],
+        "pakistan affairs": [
+            "pakistan",
+            "governance",
+            "constitution",
+            "foreign policy",
+        ],
         "history": ["history", "movement", "partition", "mughal"],
         "current affairs": ["current affairs", "news", "economy", "geopolitics"],
         "essay": ["essay", "outline", "thesis", "argument"],
