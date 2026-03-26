@@ -155,3 +155,35 @@ This workspace can be pushed to:
 - https://github.com/Khan-Feroz211/EliteCSS-AI.git
 
 Before push, ensure backend/.env is not committed and use .env.example as template.
+
+## Railway Deployment
+
+This repository is monorepo-ready for Railway with separate backend and frontend services.
+
+### Service 1: Backend API (FastAPI)
+
+1. In Railway, create a new service from this repo.
+2. Set service Root Directory to `backend`.
+3. Railway will use `backend/railway.json` and `backend/Dockerfile`.
+4. Add required environment variables:
+	- OPENAI_API_KEY
+	- CLAUDE_API_KEY
+	- GEMINI_API_KEY
+	- ALLOWED_ORIGINS (include frontend Railway domain)
+	- RATE_LIMIT (optional, default 30/minute)
+	- DATABASE_URL (optional; for persistent DB use Railway Postgres)
+	- MLFLOW_TRACKING_URI (optional)
+	- MLFLOW_EXPERIMENT_NAME (optional)
+
+### Service 2: Frontend Web (React + Nginx)
+
+1. Create another Railway service from the same repo.
+2. Set service Root Directory to `frontend`.
+3. Railway will use `frontend/railway.json` and `frontend/Dockerfile`.
+4. Set build variable:
+	- VITE_API_BASE_URL=https://<your-backend-service-domain>
+
+### Domain and CORS
+
+- After frontend domain is assigned, add it to backend `ALLOWED_ORIGINS`.
+- Redeploy backend after updating CORS origins.
