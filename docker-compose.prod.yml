@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    command: gunicorn app.main:app --workers 3 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+  mlflow:
+    image: python:3.11-slim
+    working_dir: /mlflow
+    ports:
+      - "5001:5001"
+    volumes:
+      - mlflow_data:/mlflow
+    command: sh -c "pip install --no-cache-dir mlflow==2.19.0 && mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlflow/artifacts --host 0.0.0.0 --port 5001"
+
+volumes:
+  mlflow_data:

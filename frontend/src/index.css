@@ -1,0 +1,49 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", sans-serif;
+}
+
+.font-display {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.bg-app {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(34, 211, 238, 0.12), transparent 30%),
+    radial-gradient(circle at 82% 82%, rgba(217, 70, 239, 0.1), transparent 34%),
+    linear-gradient(180deg, rgb(2, 6, 23), rgb(10, 18, 35));
+}
+
+.bg-app-light {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(34, 211, 238, 0.14), transparent 30%),
+    radial-gradient(circle at 82% 82%, rgba(244, 114, 182, 0.12), transparent 34%),
+    linear-gradient(180deg, rgb(241, 245, 249), rgb(226, 232, 240));
+}
+
+.dark .bg-app {
+  color-scheme: dark;
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.4);
+  border-radius: 999px;
+}
