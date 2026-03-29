@@ -5,7 +5,7 @@ import MessageInput from "./components/MessageInput";
 import ModelSelector from "./components/ModelSelector";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 const TOPICS = [
   "Pakistan Affairs",
   "History",
@@ -90,7 +90,7 @@ export default function App() {
     setLoading(true);
 
     streamRef.current?.close();
-    const streamUrl = new URL(`${API_BASE}/api/v1/chat/stream`);
+    const streamUrl = new URL(`${API_BASE}/api/v1/chat/stream`, window.location.href);
     streamUrl.searchParams.set("model", selectedModel);
     streamUrl.searchParams.set("messages", JSON.stringify(nextMessages));
     streamUrl.searchParams.set("user_id", "web-user");

@@ -2,8 +2,8 @@ import json
 import hashlib
 import time
 import uuid
+from collections.abc import AsyncIterator
 from collections import OrderedDict
-from collections.abc import Iterator
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -45,28 +45,32 @@ def _resolve_model_name(model: str) -> str:
     raise HTTPException(status_code=400, detail="Invalid model selected")
 
 
-def _chat_call(
+async def _chat_call(
     model: str, messages: list[dict[str, str]], system_prompt: str
 ) -> tuple[str, int]:
     if model == "gpt":
-        return call_gpt(messages, system_prompt=system_prompt)
+        return await call_gpt(messages, system_prompt=system_prompt)
     if model == "claude":
-        return call_claude(messages, system_prompt=system_prompt)
+        return await call_claude(messages, system_prompt=system_prompt)
     if model == "gemini":
-        return call_gemini(messages, system_prompt=system_prompt)
+        return await call_gemini(messages, system_prompt=system_prompt)
     raise HTTPException(status_code=400, detail="Invalid model selected")
 
 
-def _stream_call(
+async def _stream_call(
     model: str, messages: list[dict[str, str]], system_prompt: str
-) -> Iterator[str]:
+) -> AsyncIterator[str]:
     if model == "gpt":
-        return stream_gpt(messages, system_prompt=system_prompt)
-    if model == "claude":
-        return stream_claude(messages, system_prompt=system_prompt)
-    if model == "gemini":
-        return stream_gemini(messages, system_prompt=system_prompt)
-    raise HTTPException(status_code=400, detail="Invalid model selected")
+        async for token in stream_gpt(messages, system_prompt=system_prompt):
+            yield token
+    elif model == "claude":
+        async for token in stream_claude(messages, system_prompt=system_prompt):
+            yield token
+    elif model == "gemini":
+        async for token in stream_gemini(messages, system_prompt=system_prompt):
+            yield token
+    else:
+        raise HTTPException(status_code=400, detail="Invalid model selected")
 
 
 def _optimize_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -120,7 +124,7 @@ def _cache_set(cache_key: str, reply: str, tokens_used: int) -> None:
 
 @router.post("/chat", response_model=ChatResponse)
 @settings.limiter.limit(settings.rate_limit)
-def chat(
+async def chat(
     request: Request,
     response: Response,
     payload: ChatRequest,
@@ -171,7 +175,7 @@ def chat(
     response.headers["x-cache"] = "miss"
 
     try:
-        reply, tokens_used = _chat_call(
+        reply, tokens_used = await _chat_call(
             payload.model, messages, system_prompt=system_prompt
         )
     except Exception as exc:
@@ -220,7 +224,7 @@ def chat(
 
 @router.post("/chat/stream")
 @settings.limiter.limit(settings.rate_limit)
-def chat_stream(
+async def chat_stream(
     request: Request,
     payload: ChatRequest,
     user_id: str = Depends(get_user_id),
@@ -245,7 +249,7 @@ def chat_stream(
 
     started = time.perf_counter()
 
-    def event_generator() -> Iterator[str]:
+    async def event_generator() -> AsyncIterator[str]:
         token_count = 0
         try:
             meta = json.dumps(
@@ -257,7 +261,7 @@ def chat_stream(
             )
             yield f"event: meta\ndata: {meta}\n\n"
 
-            for token in _stream_call(
+            async for token in _stream_call(
                 payload.model, messages, system_prompt=system_prompt
             ):
                 token_count += 1
@@ -308,7 +312,7 @@ def chat_stream(
 
 @router.get("/chat/stream")
 @settings.limiter.limit(settings.rate_limit)
-def chat_stream_eventsource(
+async def chat_stream_eventsource(
     request: Request,
     messages: str = Query(..., description="JSON-encoded chat messages"),
     model: str = Query("gpt", pattern="^(gpt|claude|gemini)$"),
@@ -318,6 +322,6 @@ def chat_stream_eventsource(
     payload = ChatRequest.model_validate(
         {"messages": json.loads(messages), "model": model}
     )
-    return chat_stream(
+    return await chat_stream(
         request=request, payload=payload, user_id=user_id, session_id=session_id
     )
