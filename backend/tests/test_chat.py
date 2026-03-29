@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -22,7 +23,7 @@ def test_chat_gpt_route(monkeypatch):
     from app.routers import chat
 
     monkeypatch.setattr(
-        chat, "call_gpt", lambda messages, system_prompt=None: ("gpt ok", 11)
+        chat, "call_gpt", AsyncMock(return_value=("gpt ok", 11))
     )
 
     res = client.post("/api/v1/chat", json=_payload("gpt"), headers={"x-user-id": "u1"})
@@ -37,7 +38,7 @@ def test_chat_claude_route(monkeypatch):
     from app.routers import chat
 
     monkeypatch.setattr(
-        chat, "call_claude", lambda messages, system_prompt=None: ("claude ok", 12)
+        chat, "call_claude", AsyncMock(return_value=("claude ok", 12))
     )
 
     res = client.post(
@@ -54,7 +55,7 @@ def test_chat_gemini_route(monkeypatch):
     from app.routers import chat
 
     monkeypatch.setattr(
-        chat, "call_gemini", lambda messages, system_prompt=None: ("gemini ok", 13)
+        chat, "call_gemini", AsyncMock(return_value=("gemini ok", 13))
     )
 
     res = client.post(
@@ -88,7 +89,7 @@ def test_feedback_store(monkeypatch):
 
     asyncio.run(init_db())
     monkeypatch.setattr(
-        chat, "call_gpt", lambda messages, system_prompt=None: ("gpt ok", 11)
+        chat, "call_gpt", AsyncMock(return_value=("gpt ok", 11))
     )
 
     chat_res = client.post(

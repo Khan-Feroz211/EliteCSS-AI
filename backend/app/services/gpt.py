@@ -1,13 +1,13 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from app.config import settings
 from app.mlops.mlflow_tracker import track_llm_call
 
 
-def _client() -> OpenAI:
-    return OpenAI(api_key=settings.openai_api_key)
+def _client() -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=settings.openai_api_key)
 
 
 def _prepare_messages(
@@ -20,11 +20,11 @@ def _prepare_messages(
 
 
 @track_llm_call(model_name="gpt-4o-mini")
-def call_gpt(
+async def call_gpt(
     messages: list[dict[str, str]], system_prompt: str | None = None
 ) -> tuple[str, int]:
     prompt = system_prompt or settings.system_prompt
-    response = _client().chat.completions.create(
+    response = await _client().chat.completions.create(
         model=settings.openai_model,
         messages=_prepare_messages(messages, prompt),
         temperature=settings.temperature,
@@ -36,11 +36,11 @@ def call_gpt(
     return reply, tokens
 
 
-def stream_gpt(
+async def stream_gpt(
     messages: list[dict[str, str]], system_prompt: str | None = None
-) -> Iterator[str]:
+) -> AsyncIterator[str]:
     prompt = system_prompt or settings.system_prompt
-    stream = _client().chat.completions.create(
+    stream = await _client().chat.completions.create(
         model=settings.openai_model,
         messages=_prepare_messages(messages, prompt),
         temperature=settings.temperature,
@@ -48,7 +48,7 @@ def stream_gpt(
         stream=True,
     )
 
-    for chunk in stream:
+    async for chunk in stream:
         delta = chunk.choices[0].delta.content if chunk.choices else None
         if delta:
             yield delta

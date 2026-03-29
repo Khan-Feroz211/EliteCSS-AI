@@ -1,4 +1,5 @@
-from collections.abc import Iterator
+import asyncio
+from collections.abc import AsyncIterator
 
 from app.config import settings
 from app.mlops.mlflow_tracker import track_llm_call
@@ -25,17 +26,21 @@ def _to_gemini_parts(messages: list[dict[str, str]]) -> list[dict[str, object]]:
     return result
 
 
-@track_llm_call(model_name="gemini-pro")
-def call_gemini(
+@track_llm_call(model_name="gemini-1.5-flash")
+async def call_gemini(
     messages: list[dict[str, str]], system_prompt: str | None = None
 ) -> tuple[str, int]:
     prompt = system_prompt or settings.system_prompt
-    response = _model(prompt).generate_content(
-        _to_gemini_parts(messages),
-        generation_config={
-            "temperature": settings.temperature,
-            "max_output_tokens": settings.max_tokens,
-        },
+    parts = _to_gemini_parts(messages)
+    generation_config = {
+        "temperature": settings.temperature,
+        "max_output_tokens": settings.max_tokens,
+    }
+
+    response = await asyncio.to_thread(
+        _model(prompt).generate_content,
+        parts,
+        generation_config=generation_config,
     )
 
     reply = response.text or ""
@@ -44,20 +49,38 @@ def call_gemini(
     return reply, int(tokens or 0)
 
 
-def stream_gemini(
+async def stream_gemini(
     messages: list[dict[str, str]], system_prompt: str | None = None
-) -> Iterator[str]:
+) -> AsyncIterator[str]:
     prompt = system_prompt or settings.system_prompt
-    stream = _model(prompt).generate_content(
-        _to_gemini_parts(messages),
-        generation_config={
-            "temperature": settings.temperature,
-            "max_output_tokens": settings.max_tokens,
-        },
-        stream=True,
-    )
+    parts = _to_gemini_parts(messages)
+    generation_config = {
+        "temperature": settings.temperature,
+        "max_output_tokens": settings.max_tokens,
+    }
 
-    for chunk in stream:
-        text = getattr(chunk, "text", "")
-        if text:
-            yield text
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    def _sync_stream() -> None:
+        try:
+            for chunk in _model(prompt).generate_content(
+                parts,
+                generation_config=generation_config,
+                stream=True,
+            ):
+                text = getattr(chunk, "text", "")
+                if text:
+                    loop.call_soon_threadsafe(queue.put_nowait, text)
+        except Exception:
+            pass
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    loop.run_in_executor(None, _sync_stream)
+
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        yield item

@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
 
     openai_model: str = "gpt-4o-mini"
-    claude_model: str = "claude-3-sonnet-20240229"
-    gemini_model: str = "gemini-pro"
+    claude_model: str = "claude-sonnet-4-6"
+    gemini_model: str = "gemini-1.5-flash"
 
     temperature: float = 0.3
     max_tokens: int = 1024
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
         "and general knowledge."
     )
 
-    allowed_origins: str = "http://localhost:5173,https://cssprep.ai"
+    allowed_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://cssprep.ai"
     rate_limit: str = "30/minute"
 
     database_url: str = "sqlite+aiosqlite:///./css_prep_ai.db"

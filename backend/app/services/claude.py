@@ -1,13 +1,13 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
 from app.config import settings
 from app.mlops.mlflow_tracker import track_llm_call
 
 
-def _client() -> Anthropic:
-    return Anthropic(api_key=settings.claude_api_key)
+def _client() -> AsyncAnthropic:
+    return AsyncAnthropic(api_key=settings.claude_api_key)
 
 
 def _split_messages(
@@ -31,13 +31,13 @@ def _split_messages(
     return active_system_prompt, prepared
 
 
-@track_llm_call(model_name="claude-3-sonnet-20240229")
-def call_claude(
+@track_llm_call(model_name="claude-sonnet-4-6")
+async def call_claude(
     messages: list[dict[str, str]], system_prompt: str | None = None
 ) -> tuple[str, int]:
     prompt = system_prompt or settings.system_prompt
     active_system_prompt, prepared_messages = _split_messages(messages, prompt)
-    response = _client().messages.create(
+    response = await _client().messages.create(
         model=settings.claude_model,
         system=active_system_prompt,
         max_tokens=settings.max_tokens,
@@ -52,19 +52,19 @@ def call_claude(
     return reply, tokens
 
 
-def stream_claude(
+async def stream_claude(
     messages: list[dict[str, str]], system_prompt: str | None = None
-) -> Iterator[str]:
+) -> AsyncIterator[str]:
     prompt = system_prompt or settings.system_prompt
     active_system_prompt, prepared_messages = _split_messages(messages, prompt)
 
-    with _client().messages.stream(
+    async with _client().messages.stream(
         model=settings.claude_model,
         system=active_system_prompt,
         max_tokens=settings.max_tokens,
         temperature=settings.temperature,
         messages=prepared_messages,
     ) as stream:
-        for text in stream.text_stream:
+        async for text in stream.text_stream:
             if text:
                 yield text
