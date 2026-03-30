@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Literal
 
 
@@ -55,3 +56,27 @@ class FeedbackResponse(BaseModel):
     status: str
     feedback_id: int
     linked_to_run: bool
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=100)
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class TokenData(BaseModel):
+    user_id: int
+    email: str
