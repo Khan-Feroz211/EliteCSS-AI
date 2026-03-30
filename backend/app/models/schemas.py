@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Literal
 
@@ -80,3 +81,15 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     user_id: int
     email: str
+
+
+class ModelChoice(str, Enum):
+    gpt = "gpt"
+    claude = "claude"
+    gemini = "gemini"
+
+
+class StreamRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+    model: ModelChoice = ModelChoice.gpt
+    history: list[Message] = Field(default_factory=list)

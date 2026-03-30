@@ -22,7 +22,7 @@ from app.mlops.prompt_manager import (
     select_prompt_version,
 )
 from app.mlops.quality_monitor import analyze_response
-from app.models.schemas import ChatRequest, ChatResponse
+from app.models.schemas import ChatRequest, ChatResponse, StreamRequest
 from app.services.auth import decode_access_token
 from app.services.claude import call_claude, stream_claude
 from app.services.gemini import call_gemini, stream_gemini
@@ -234,89 +234,38 @@ async def chat(
 @settings.limiter.limit(settings.rate_limit)
 async def chat_stream(
     request: Request,
-    payload: ChatRequest,
-    user_id: str = Depends(get_user_id),
-    session_id: str = Depends(get_session_id),
+    payload: StreamRequest,
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
+    """
+    SSE streaming endpoint. Returns text/event-stream response.
+    Each chunk is formatted as SSE: "data: {text}\\n\\n"
+    A final "data: [DONE]\\n\\n" signals the stream is complete.
+    """
     del request
 
-    messages = _optimize_messages([m.model_dump() for m in payload.messages])
-    model_name = _resolve_model_name(payload.model)
-    prompt_version = select_prompt_version()
-    system_prompt = load_prompt(prompt_version)
-    exam_topic = detect_exam_topic(messages)
-    message_id = uuid.uuid4().hex
-
-    set_tracking_context(
-        user_id=user_id,
-        session_id=session_id,
-        exam_topic=exam_topic,
-        prompt_version=prompt_version,
-        message_id=message_id,
+    messages = _optimize_messages(
+        [*[m.model_dump() for m in payload.history], {"role": "user", "content": payload.message}]
     )
-
-    started = time.perf_counter()
+    system_prompt = load_prompt(select_prompt_version())
 
     async def event_generator() -> AsyncIterator[str]:
-        token_count = 0
         try:
-            meta = json.dumps(
-                {
-                    "message_id": message_id,
-                    "prompt_version": prompt_version,
-                    "model": model_name,
-                }
-            )
-            yield f"event: meta\ndata: {meta}\n\n"
-
-            async for token in _stream_call(
-                payload.model, messages, system_prompt=system_prompt
-            ):
-                token_count += 1
-                chunk = json.dumps({"token": token, "model": model_name})
-                yield f"event: token\ndata: {chunk}\n\n"
-
-            latency_ms = (time.perf_counter() - started) * 1000
-            done = json.dumps(
-                {
-                    "done": True,
-                    "model": model_name,
-                    "latency_ms": round(latency_ms, 2),
-                    "message_id": message_id,
-                    "prompt_version": prompt_version,
-                }
-            )
-            yield f"event: done\ndata: {done}\n\n"
-
-            logger.info(
-                "chat_stream_completed",
-                model=model_name,
-                user_id=user_id,
-                session_id=session_id,
-                message_id=message_id,
-                prompt_version=prompt_version,
-                exam_topic=exam_topic,
-                token_count=token_count,
-                latency_ms=latency_ms,
-            )
-            clear_tracking_context()
+            async for token in _stream_call(payload.model, messages, system_prompt=system_prompt):
+                safe = token.replace("\n", "\\n")
+                yield f"data: {safe}\n\n"
+            yield "data: [DONE]\n\n"
         except Exception as exc:
-            logger.exception(
-                "chat_stream_failed",
-                model=model_name,
-                user_id=user_id,
-                session_id=session_id,
-                message_id=message_id,
-                token_count=token_count,
-                latency_ms=(time.perf_counter() - started) * 1000,
-                error=str(exc),
-            )
-            err = json.dumps({"error": "Model provider call failed"})
-            yield f"event: error\ndata: {err}\n\n"
-            clear_tracking_context()
+            yield f"data: [ERROR] {str(exc)}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/chat/stream")
@@ -330,6 +279,7 @@ async def chat_stream_eventsource(
     token: str = Query(..., description="Bearer token for authentication"),
     db: AsyncSession = Depends(get_db_dep),
 ) -> StreamingResponse:
+    del request, user_id, session_id
     token_data = decode_access_token(token)
     result = await db.execute(select(User).where(User.id == token_data.user_id))
     current_user = result.scalar_one_or_none()
@@ -338,10 +288,21 @@ async def chat_stream_eventsource(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
-    payload = ChatRequest.model_validate(
-        {"messages": json.loads(messages), "model": model}
-    )
-    return await chat_stream(
-        request=request, payload=payload, user_id=user_id, session_id=session_id,
-        current_user=current_user,
+
+    optimized = _optimize_messages(json.loads(messages))
+    system_prompt = load_prompt(select_prompt_version())
+
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            async for token_text in _stream_call(model, optimized, system_prompt=system_prompt):
+                safe = token_text.replace("\n", "\\n")
+                yield f"data: {safe}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            yield f"data: [ERROR] {str(exc)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
