@@ -19,4 +19,6 @@ def health(request: Request) -> HealthResponse:
             settings.claude_model,
             settings.gemini_model,
         ],
+        mlflow_tracking="enabled",
+        metrics_endpoint="/metrics",
     )

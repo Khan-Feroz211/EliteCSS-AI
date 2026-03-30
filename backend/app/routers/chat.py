@@ -16,6 +16,7 @@ from app.db.database import get_db as get_db_dep
 from app.db.models import User
 from app.dependencies import get_current_user
 from app.mlops.mlflow_tracker import clear_tracking_context, set_tracking_context
+from app.mlops.metrics import record_chat_request
 from app.mlops.prompt_manager import (
     detect_exam_topic,
     load_prompt,
@@ -84,6 +85,10 @@ def _optimize_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
     if len(messages) <= max_history:
         return messages
     return messages[-max_history:]
+
+
+def _prompt_length(messages: list[dict[str, str]]) -> int:
+    return sum(len(m.get("content", "")) for m in messages)
 
 
 def _cache_key(model: str, messages: list[dict[str, str]], prompt_version: str) -> str:
@@ -196,6 +201,14 @@ async def chat(
             error=str(exc),
             session_id=session_id,
         )
+        record_chat_request(
+            model=payload.model,
+            status="error",
+            endpoint="chat",
+            latency_seconds=(time.perf_counter() - started),
+            prompt_length=_prompt_length(messages),
+            response_length=0,
+        )
         clear_tracking_context()
         raise HTTPException(
             status_code=502, detail="Model provider call failed"
@@ -217,6 +230,14 @@ async def chat(
         response_relevance_score=quality_metrics["response_relevance_score"],
         response_length_chars=quality_metrics["response_length_chars"],
         model_latency_p50_p95_p99=quality_metrics["model_latency_p50_p95_p99"],
+    )
+    record_chat_request(
+        model=payload.model,
+        status="success",
+        endpoint="chat",
+        latency_seconds=latency_ms / 1000,
+        prompt_length=_prompt_length(messages),
+        response_length=len(reply),
     )
     _cache_set(cache_key, reply, tokens_used)
 
@@ -260,6 +281,7 @@ async def chat_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         token_count = 0
+        buffer = ""
         try:
             meta = json.dumps(
                 {
@@ -274,6 +296,7 @@ async def chat_stream(
                 payload.model, messages, system_prompt=system_prompt
             ):
                 token_count += 1
+                buffer += token
                 chunk = json.dumps({"token": token, "model": model_name})
                 yield f"event: token\ndata: {chunk}\n\n"
 
@@ -300,6 +323,14 @@ async def chat_stream(
                 token_count=token_count,
                 latency_ms=latency_ms,
             )
+            record_chat_request(
+                model=payload.model,
+                status="success",
+                endpoint="stream",
+                latency_seconds=latency_ms / 1000,
+                prompt_length=_prompt_length(messages),
+                response_length=len(buffer),
+            )
             clear_tracking_context()
         except Exception as exc:
             logger.exception(
@@ -311,6 +342,14 @@ async def chat_stream(
                 token_count=token_count,
                 latency_ms=(time.perf_counter() - started) * 1000,
                 error=str(exc),
+            )
+            record_chat_request(
+                model=payload.model,
+                status="error",
+                endpoint="stream",
+                latency_seconds=(time.perf_counter() - started),
+                prompt_length=_prompt_length(messages),
+                response_length=len(buffer),
             )
             err = json.dumps({"error": "Model provider call failed"})
             yield f"event: error\ndata: {err}\n\n"
