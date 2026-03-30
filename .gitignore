@@ -2,7 +2,10 @@
 .env
 .env.*
 !.env.example
+!.env.docker.example
 backend/.env
+.env.docker
+docker-compose.override.yml
 
 # Python
 __pycache__/

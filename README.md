@@ -1,25 +1,19 @@
 # CSS Prep AI
 
-CSS Prep AI is a production-oriented multi-LLM chatbot platform for Pakistan CSS exam preparation.
-It routes user prompts to GPT-4o-mini, Claude, or Gemini through a FastAPI backend and a React + Vite frontend.
-
-## Features
-
-- Multi-provider routing: OpenAI, Anthropic, Google Gemini
-- Multi-turn chat with streaming responses (SSE)
-- Structured logging with request metadata
-- Rate limiting and request validation
-- Prompt management with A/B testing
-- MLflow observability for latency, tokens, and response quality
-- Feedback loop endpoint backed by async SQLite
-- Containerized local and production setups
-- CI/CD pipeline with lint, test, image build, and deploy placeholder
+Multi-LLM chatbot for Pakistan CSS exam preparation.
+Powered by GPT-4o-mini, Claude, and Gemini with JWT auth and streaming.
 
 ## Tech Stack
 
-- Backend: FastAPI, Pydantic, SlowAPI, Structlog, SQLAlchemy async, MLflow
-- Frontend: React 18, Vite, Tailwind CSS
-- Infra: Docker, Docker Compose, Nginx, GitHub Actions
+| Layer     | Technology                              |
+|-----------|-----------------------------------------|
+| Backend   | FastAPI, Pydantic, SQLAlchemy async     |
+| Database  | PostgreSQL 16                           |
+| Frontend  | React 18, Vite, Tailwind CSS            |
+| Auth      | JWT (python-jose)                       |
+| Proxy     | Nginx (with SSE proxy)                  |
+| Infra     | Docker, Docker Compose                  |
+| Observability | MLflow, Structlog                   |
 
 ## Project Structure
 
@@ -28,6 +22,7 @@ css-prep-ai/
 ├── backend/
 │   ├── app/
 │   │   ├── routers/
+│   │   │   ├── auth.py
 │   │   │   ├── chat.py
 │   │   │   ├── feedback_router.py
 │   │   │   └── health.py
@@ -48,23 +43,18 @@ css-prep-ai/
 │   │   │   └── models.py
 │   │   ├── config.py
 │   │   └── main.py
+│   ├── alembic/
+│   │   └── versions/
+│   │       └── 001_create_users_table.py
 │   ├── prompts/
-│   │   ├── css_prep_v1.yaml
-│   │   └── css_prep_v2.yaml
 │   ├── tests/
-│   │   └── test_chat.py
+│   ├── alembic.ini
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── ChatWindow.jsx
-│   │   │   ├── MessageInput.jsx
-│   │   │   ├── ModelSelector.jsx
-│   │   │   ├── FeedbackButtons.jsx
-│   │   │   └── StreamingMessage.jsx
 │   │   ├── hooks/
-│   │   │   └── useLocalStorage.js
 │   │   ├── App.jsx
 │   │   └── main.jsx
 │   ├── package.json
@@ -76,25 +66,69 @@ css-prep-ai/
 │       └── ci.yml
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
-├── .env.example
+├── .env.docker.example
+├── Makefile
 ├── .gitignore
 └── README.md
 ```
 
-## Local Development
+## Prerequisites
 
-### 1) Backend
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- Docker Compose v2 (comes with Docker Desktop)
+- API keys for OpenAI, Anthropic, and Google Gemini
+
+## Quick Start with Docker (Recommended)
+
+### Step 1 — Clone and configure
+
+```bash
+git clone https://github.com/Khan-Feroz211/EliteCSS-AI.git
+cd EliteCSS-AI
+cp .env.docker.example .env.docker
+# Edit .env.docker with your real API keys, a strong POSTGRES_PASSWORD,
+# and a long JWT_SECRET (minimum 32 characters)
+```
+
+### Step 2 — Start everything
+
+```bash
+make up
+# or: docker-compose up -d
+# First run takes 2-3 minutes to build images
+```
+
+### Step 3 — Verify all services are healthy
+
+```bash
+docker-compose ps
+# All three should show status: healthy or running
+
+curl http://localhost:8000/health
+# → {"status":"ok","uptime_seconds":N,"models_available":[...]}
+
+curl http://localhost/api/v1/health
+# → same response through nginx proxy (confirms proxy is working)
+```
+
+### Step 4 — Open the app
+
+Open [http://localhost](http://localhost) in your browser, click **Register**, and start chatting.
+
+## Manual Setup (Without Docker)
+
+### Backend
 
 ```bash
 cd backend
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env        # fill in your keys
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 2) Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -104,86 +138,51 @@ npm run dev
 
 Frontend URL: http://localhost:5173
 
-## Run with Docker
+## Available Make Commands
 
-### Local stack
+| Command              | Description                                    |
+|----------------------|------------------------------------------------|
+| `make up`            | Start all services (detached)                  |
+| `make down`          | Stop all services                              |
+| `make build`         | Rebuild all Docker images (no cache)           |
+| `make logs`          | Follow logs from all services                  |
+| `make logs-backend`  | Follow backend logs only                       |
+| `make migrate`       | Run database migrations inside container       |
+| `make shell-backend` | Open a shell inside the backend container      |
+| `make shell-db`      | Open psql inside the postgres container        |
+| `make reset`         | Stop, remove volumes, and restart fresh        |
+| `make prod-up`       | Start production compose stack                 |
+| `make prod-down`     | Stop production compose stack                  |
+| `make prod-build`    | Rebuild production images (no cache)           |
 
-```bash
-docker compose up --build
-```
+## Environment Variables
 
-Services:
+| Variable                   | Description                               | Example                          |
+|----------------------------|-------------------------------------------|----------------------------------|
+| `OPENAI_API_KEY`           | OpenAI API key                            | `sk-proj-...`                    |
+| `CLAUDE_API_KEY`           | Anthropic API key                         | `sk-ant-...`                     |
+| `GEMINI_API_KEY`           | Google Gemini API key                     | `AIza...`                        |
+| `POSTGRES_USER`            | PostgreSQL username                       | `postgres`                       |
+| `POSTGRES_PASSWORD`        | PostgreSQL password                       | `strongpassword`                 |
+| `POSTGRES_DB`              | PostgreSQL database name                  | `css_prep_ai`                    |
+| `JWT_SECRET`               | Secret for signing JWT tokens (≥32 chars) | `$(openssl rand -hex 32)` |
+| `APP_ENV`                  | Application environment                   | `development` / `production`     |
+| `LOG_LEVEL`                | Logging level                             | `INFO`                           |
 
-- Frontend: http://localhost:5173
-- Backend: http://localhost:8000
-- MLflow: http://localhost:5001
-- SQLite UI: http://localhost:8080
+## API Endpoints
 
-### Production compose
+| Method | Path                       | Auth Required | Description              |
+|--------|----------------------------|---------------|--------------------------|
+| GET    | `/health`                  | No            | Liveness check           |
+| POST   | `/api/v1/auth/register`    | No            | Create account           |
+| POST   | `/api/v1/auth/login`       | No            | Get JWT token            |
+| POST   | `/api/v1/chat`             | Yes           | Single response          |
+| POST   | `/api/v1/chat/stream`      | Yes           | SSE streaming response   |
 
-```bash
-docker compose -f docker-compose.prod.yml up --build -d
-```
+## Roadmap
 
-## MLflow Dashboard
-
-Open: http://localhost:5001
-
-Track each LLM call for latency, token usage, response size, prompt version, and user/session tags.
-
-## CI/CD
-
-Workflow file:
-
-- .github/workflows/ci.yml
-
-Behavior:
-
-- Pull requests: lint + test
-- Push to main: lint + test + build + deploy stage
-
-For VPS deploy stage, add these repository secrets:
-
-- VPS_HOST
-- VPS_USER
-- VPS_SSH_KEY
-
-## Notes for GitHub Push
-
-This workspace can be pushed to:
-
-- https://github.com/Khan-Feroz211/EliteCSS-AI.git
-
-Before push, ensure backend/.env is not committed and use .env.example as template.
-
-## Railway Deployment
-
-This repository is monorepo-ready for Railway with separate backend and frontend services.
-
-### Service 1: Backend API (FastAPI)
-
-1. In Railway, create a new service from this repo.
-2. Set service Root Directory to `backend`.
-3. Railway will use `backend/railway.json` and `backend/Dockerfile`.
-4. Add required environment variables:
-	- OPENAI_API_KEY
-	- CLAUDE_API_KEY
-	- GEMINI_API_KEY
-	- ALLOWED_ORIGINS (include frontend Railway domain)
-	- RATE_LIMIT (optional, default 30/minute)
-	- DATABASE_URL (optional; for persistent DB use Railway Postgres)
-	- MLFLOW_TRACKING_URI (optional)
-	- MLFLOW_EXPERIMENT_NAME (optional)
-
-### Service 2: Frontend Web (React + Nginx)
-
-1. Create another Railway service from the same repo.
-2. Set service Root Directory to `frontend`.
-3. Railway will use `frontend/railway.json` and `frontend/Dockerfile`.
-4. Set build variable:
-	- VITE_API_BASE_URL=https://<your-backend-service-domain>
-
-### Domain and CORS
-
-- After frontend domain is assigned, add it to backend `ALLOWED_ORIGINS`.
-- Redeploy backend after updating CORS origins.
+- **Day 5**: MLflow observability
+- **Day 6**: CI/CD pipeline
+- **Day 7**: Stripe billing
+- **Day 8**: Kubernetes
+- **Day 9**: Production deployment
