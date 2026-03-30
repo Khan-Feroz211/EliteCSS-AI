@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: "CSS Prep AI"
+    orgId: 1
+    folder: "CSS Prep AI"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards

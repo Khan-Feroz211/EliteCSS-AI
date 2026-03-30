@@ -44,6 +44,8 @@ class HealthResponse(BaseModel):
     status: str
     uptime: float
     models_available: list[str]
+    mlflow_tracking: str = "enabled"
+    metrics_endpoint: str = "/metrics"
 
 
 class FeedbackRequest(BaseModel):

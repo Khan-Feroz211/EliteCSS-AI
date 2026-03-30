@@ -11,10 +11,12 @@ from slowapi import _rate_limit_exceeded_handler
 from app.config import settings
 from app.db.database import init_db
 from app.middleware.logging import RequestLoggingMiddleware, configure_logging
+from app.mlops.tracker import setup_mlflow
 from app.routers.chat import router as chat_router
 from app.routers.feedback_router import router as feedback_router
 from app.routers.health import router as health_router
 from app.routers.auth import router as auth_router
+from app.routers.metrics import router as metrics_router
 
 _logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ async def lifespan(app: FastAPI):
             "Set a strong random secret via the JWT_SECRET environment variable before deploying."
         )
     await init_db()
+    setup_mlflow()
     yield
 
 
@@ -57,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(feedback_router)
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(metrics_router)
 
     return app
 
