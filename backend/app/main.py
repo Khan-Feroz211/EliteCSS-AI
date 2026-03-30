@@ -1,3 +1,4 @@
+import logging
 import time
 from contextlib import asynccontextmanager
 
@@ -13,10 +14,22 @@ from app.middleware.logging import RequestLoggingMiddleware, configure_logging
 from app.routers.chat import router as chat_router
 from app.routers.feedback_router import router as feedback_router
 from app.routers.health import router as health_router
+from app.routers.auth import router as auth_router
+
+_logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.is_default_jwt_secret and settings.app_env == "production":
+        raise RuntimeError(
+            "JWT_SECRET must be changed from the default value in production."
+        )
+    if settings.is_default_jwt_secret:
+        _logger.warning(
+            "JWT_SECRET is using the default placeholder value. "
+            "Set a strong random secret via the JWT_SECRET environment variable before deploying."
+        )
     await init_db()
     yield
 
@@ -43,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(chat_router)
     app.include_router(feedback_router)
+    app.include_router(auth_router, prefix="/api/v1")
 
     return app
 

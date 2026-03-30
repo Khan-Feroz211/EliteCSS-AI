@@ -29,12 +29,18 @@ class Settings(BaseSettings):
 
     allowed_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://cssprep.ai"
     rate_limit: str = "30/minute"
+    app_env: str = "development"
 
     database_url: str = "sqlite+aiosqlite:///./css_prep_ai.db"
+    jwt_secret: str = "change-this-to-a-random-secret-in-production"
     mlflow_tracking_uri: str = "http://localhost:5001"
     mlflow_experiment_name: str = "css-prep-ai-llm"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    @property
+    def is_default_jwt_secret(self) -> bool:
+        return self.jwt_secret == "change-this-to-a-random-secret-in-production"
 
     @property
     def origins(self) -> list[str]:

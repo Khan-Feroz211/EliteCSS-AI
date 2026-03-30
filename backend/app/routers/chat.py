@@ -6,10 +6,15 @@ from collections.abc import AsyncIterator
 from collections import OrderedDict
 
 import structlog
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.db.database import get_db as get_db_dep
+from app.db.models import User
+from app.dependencies import get_current_user
 from app.mlops.mlflow_tracker import clear_tracking_context, set_tracking_context
 from app.mlops.prompt_manager import (
     detect_exam_topic,
@@ -18,6 +23,7 @@ from app.mlops.prompt_manager import (
 )
 from app.mlops.quality_monitor import analyze_response
 from app.models.schemas import ChatRequest, ChatResponse
+from app.services.auth import decode_access_token
 from app.services.claude import call_claude, stream_claude
 from app.services.gemini import call_gemini, stream_gemini
 from app.services.gpt import call_gpt, stream_gpt
@@ -130,9 +136,11 @@ async def chat(
     payload: ChatRequest,
     user_id: str = Depends(get_user_id),
     session_id: str = Depends(get_session_id),
+    current_user: User = Depends(get_current_user),
 ) -> ChatResponse:
     del request
 
+    logger.info("chat_request", user_id=current_user.id, model=payload.model)
     started = time.perf_counter()
     messages = _optimize_messages([m.model_dump() for m in payload.messages])
     model_name = _resolve_model_name(payload.model)
@@ -229,6 +237,7 @@ async def chat_stream(
     payload: ChatRequest,
     user_id: str = Depends(get_user_id),
     session_id: str = Depends(get_session_id),
+    current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     del request
 
@@ -318,10 +327,21 @@ async def chat_stream_eventsource(
     model: str = Query("gpt", pattern="^(gpt|claude|gemini)$"),
     user_id: str = Query("anonymous"),
     session_id: str = Query("default"),
+    token: str = Query(..., description="Bearer token for authentication"),
+    db: AsyncSession = Depends(get_db_dep),
 ) -> StreamingResponse:
+    token_data = decode_access_token(token)
+    result = await db.execute(select(User).where(User.id == token_data.user_id))
+    current_user = result.scalar_one_or_none()
+    if current_user is None or not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
     payload = ChatRequest.model_validate(
         {"messages": json.loads(messages), "model": model}
     )
     return await chat_stream(
-        request=request, payload=payload, user_id=user_id, session_id=session_id
+        request=request, payload=payload, user_id=user_id, session_id=session_id,
+        current_user=current_user,
     )
